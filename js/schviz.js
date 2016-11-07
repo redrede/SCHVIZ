@@ -13,11 +13,11 @@
     var doc, iframe;
     iframe = document.createElement('iframe');
     iframe.setAttribute('style', 'border: none; width: 100%; height: 100%;');
-    container.appendChild(iframe);
+    container.append(iframe);
     doc = iframe.contentDocument;
-    doc.querySelector('body').innerHTML = FORM;
-    doc.querySelector('input').value = src;
-    return doc.querySelector('form').submit();
+    container.innerHTML = FORM;
+    $('input').value = src;
+    return $('form').submit();
   };
 
 }).call(this);
