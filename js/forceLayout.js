@@ -1,9 +1,7 @@
 (function () {
-    var ANIMATION_SPEED, BORDER_INSET, CELL_MIN, CELL_PAD, DEBUG_FORCE_FACTOR, EXPORT_PAD, GEOMETRY_VERSION, KIELER_URL, LABEL_SPACE, LINK_DISTANCE, LINK_STRENGTH, LoadingOverlay, MARGIN, MAX_ZOOM, MIN_ZOOM, NewNodesAnimation, ROUND_CORNER, SRC_PREVIEW_LIMIT, actionBlockSvg, actionSvg, applyKielerLayout, envelope, findTransition, force, idMaker, idPath, kielerLayout, midpoint, nextId, parents, path, strip, toKielerFormat, treeFromXml, walk;
+    var ANIMATION_SPEED, BORDER_INSET, CELL_MIN, CELL_PAD, DEBUG_FORCE_FACTOR, EXPORT_PAD, GEOMETRY_VERSION, LABEL_SPACE, LINK_DISTANCE, LINK_STRENGTH, LoadingOverlay, MARGIN, MAX_ZOOM, MIN_ZOOM, NewNodesAnimation, ROUND_CORNER, SRC_PREVIEW_LIMIT, actionBlockSvg, actionSvg, applySCXMLLayout, envelope, findTransition, force, idMaker, idPath, scxmlLayout, midpoint, nextId, parents, path, strip, toSCXMLFormat, treeFromXml, walk;
 
     force = window.forceLayout = {};
-
-    KIELER_URL = 'http://kieler.herokuapp.com/live';
 
     MARGIN = 5;
 
@@ -52,7 +50,7 @@
         var key, value;
         for (key in obj) {
             value = obj[key];
-            if (value != null) {
+            if (value !== null) {
                 if (_.isArray(value) && value.length === 0) {
                     delete obj[key];
                 } else if (_.isObject(value)) {
@@ -68,7 +66,7 @@
         return obj;
     };
 
-    treeFromXml = function (doc) {
+    treeFromXml = function (doc, currentState) {
         var parseActions, parseChildNodes, parseStates;
         parseActions = function (container) {
             var action, child, firstLine, rv, _i, _len, _ref;
@@ -87,13 +85,13 @@
                             att = atts[i];
                             tooltip += " <b>" + att.nodeName + ": </b>" + att.nodeValue + "<br />";
                         }
-                    }else{
-                       tagName = child.tagName.substring(child.tagName);
+                    } else {
+                        tagName = child.tagName.substring(child.tagName);
                         title = child.tagName;
                         for (var att, i = 0, atts = child.attributes, n = atts.length; i < n; i++) {
                             att = atts[i];
                             tooltip += " <b>" + att.nodeName + ": </b>" + att.nodeValue + "<br />";
-                        } 
+                        }
                     }
                     rv.push(action = {
                         label: tagName,
@@ -148,37 +146,44 @@
                 onexit: onexit
             };
         };
-        parseStates = function (node) {
-            var state, stateList, _i, _len, _ref;
+        parseStates = function (node, currentState) {
+            var state, stateList, _i, _len, _ref, initialState;
             stateList = [];
             _ref = node.childNodes;
+            if (node.tagName === 'scxml') {
+                initialState = node.getAttribute('initial');
+            }
             for (_i = 0, _len = _ref.length; _i < _len; _i++) {
                 node = _ref[_i];
                 state = (function () {
                     switch (node.tagName) {
                         case 'initial':
                             return {
-                                type: 'initial',
+                                type: 'initial' + (currentState === node.getAttribute('id')) ? ' currentState' : '',
                                 id: node.getAttribute('id') || null,
-                                children: parseStates(node)
+                                children: parseStates(node, currentState),
+                                currentState: currentState === node.getAttribute('id')
                             };
                         case 'state':
                             return {
-                                type: 'state',
+                                type: ((initialState === node.getAttribute('id')) ? 'initial' : 'state') + ((currentState === node.getAttribute('id')) ? ' currentState' : ''),
                                 id: node.getAttribute('id') || null,
-                                children: parseStates(node)
+                                children: parseStates(node, currentState),
+                                currentState: currentState === node.getAttribute('id')
                             };
                         case 'final':
                             return {
-                                type: 'final',
+                                type: 'final' + ((currentState === node.getAttribute('id')) ? ' currentState' : ''),
                                 id: node.getAttribute('id') || null,
-                                children: parseStates(node)
+                                children: parseStates(node, currentState),
+                                currentState: currentState === node.getAttribute('id')
                             };
                         case 'parallel':
                             return {
-                                type: 'parallel',
+                                type: 'parallel' + ((currentState === node.getAttribute('id')) ? ' currentState' : ''),
                                 id: node.getAttribute('id') || null,
-                                children: parseStates(node)
+                                children: parseStates(node, currentState),
+                                currentState: currentState === node.getAttribute('id')
                             };
                         case 'history':
                             return {
@@ -189,14 +194,14 @@
                     }
                 })();
                 if (state != null) {
-                    _.extend(state, parseChildNodes(node));
+                    _.extend(state, parseChildNodes(node, currentState));
                     stateList.push(strip(state));
                 }
             }
             return stateList;
         };
         return {
-            sc: parseStates(doc.documentElement)
+            sc: parseStates(doc.documentElement, currentState)
         };
     };
 
@@ -329,8 +334,13 @@
         if (options.action.preview) {
             actionT.append('tspan').attr('x', 0).attr('dy', 16).text(options.action.preview);
         }
-
-        actionR.attr('height', h = $(actionT[0][0]).height() + 10).attr('width', w = $(actionT[0][0]).width() + 10).attr('x', -w / 2).attr('rx', 5).attr('ry', 5);
+        var h = $(actionT[0][0]).height() + 10;
+        var w = $(actionT[0][0]).width() + 10;
+        if (h === 10) {
+            h = (actionT[0][0]).getBBox().height + 10;
+            w = (actionT[0][0]).getBBox().width + 10;
+        }
+        actionR.attr('height', h).attr('width', w).attr('x', -w / 2).attr('rx', 5).attr('ry', 5);
         return [w, h];
     };
 
@@ -351,14 +361,14 @@
         return [maxw, y];
     };
 
-    toKielerFormat = function (node) {
+    toSCXMLFormat = function (node) {
         var child, children, edges, node_header, node_min_size, rv, tr, _i, _j, _len, _len1, _ref, _ref1;
         children = [];
         edges = [];
         _ref = node.children || [];
         for (_i = 0, _len = _ref.length; _i < _len; _i++) {
             child = _ref[_i];
-            children.push(toKielerFormat(child));
+            children.push(toSCXMLFormat(child));
         }
         _ref1 = node.controls || [];
         for (_j = 0, _len1 = _ref1.length; _j < _len1; _j++) {
@@ -419,7 +429,7 @@
         return rv;
     };
 
-    applyKielerLayout = function (options) {
+    applySCXMLLayout = function (options) {
         var graph, kEdgeMap, kNodeMap, offsetMap, s, traverse;
         s = options.s;
         graph = options.graph;
@@ -500,11 +510,11 @@
         return traverse(graph);
     };
 
-    kielerLayout = function (s, options) {
+    scxmlLayout = function (s, options) {
         var algorithm, form, graph, klay_ready, layoutDone, top;
         algorithm = options.algorithm || '__klayjs';
         top = s.top;
-        graph = toKielerFormat(top);
+        graph = toSCXMLFormat(top);
         if (algorithm === '__klayjs') {
             klay_ready = Q.defer();
             $klay.layout({
@@ -532,11 +542,6 @@
                 iFormat: 'org.json',
                 oFormat: 'org.json'
             };
-            layoutDone = Q($.post(KIELER_URL, form))["catch"](function (resp) {
-                throw Error(resp.responseText);
-            }).then(function (resp) {
-                return JSON.parse(resp)[0];
-            });
         }
         return layoutDone;
     };
@@ -625,7 +630,7 @@
             this.svgCreate(options.parent);
             this.s = this._emptyState();
             this.animation = new NewNodesAnimation([]);
-            this._initialTree(options.tree || treeFromXml(options.doc).sc);
+            this._initialTree(options.tree || treeFromXml(options.doc, (options.currentState || null)).sc);
         }
 
         Layout.prototype._initialTree = function (tree) {
@@ -645,9 +650,9 @@
                         } else {
                             loading = new LoadingOverlay({
                                 svg: _this.el,
-                                text: "Loading Kieler layout ..."
+                                text: "Loading SCXML layout ..."
                             });
-                            return deferred.resolve(_this._kielerLayout().then(function () {
+                            return deferred.resolve(_this._scxmlLayout().then(function () {
                                 loading.destroy();
                                 return cb();
                             }));
@@ -661,15 +666,15 @@
             })(this));
         };
 
-        Layout.prototype._kielerLayout = function (options) {
+        Layout.prototype._scxmlLayout = function (options) {
             if (options == null) {
                 options = {};
             }
-            return kielerLayout(this.s, {
-                algorithm: this.options.kielerAlgorithm
+            return scxmlLayout(this.s, {
+                algorithm: this.options.scxmlAlgorithm
             }).then((function (_this) {
                 return function (graph) {
-                    return applyKielerLayout({
+                    return applySCXMLLayout({
                         s: _this.s,
                         graph: graph
                     });
@@ -683,14 +688,14 @@
             })(this));
         };
 
-        Layout.prototype.update = function (doc) {
+        Layout.prototype.update = function (doc, currentState) {
             var deferred;
             deferred = Q.defer();
             this.queue.push((function (_this) {
                 return function (cb) {
                     return deferred.resolve(Q().then(function () {
-                        _this.loadTree(treeFromXml(doc).sc);
-                        return _this._kielerLayout({
+                        _this.loadTree(treeFromXml(doc, currentState).sc);
+                        return _this._scxmlLayout({
                             animate: true
                         });
                     })["finally"](function () {
@@ -743,7 +748,7 @@
                         } else {
                             node.id = makeId("_node_");
                             node.autoId = true;
-                            node.label = "<" + node.type + ">";
+                            node.label = node.type;
                         }
                         node.isInitial = false;
                         node.controls = [];
@@ -824,26 +829,26 @@
                 children: tree
             }, (function (_this) {
                 return function (node) {
-                    var child, first, _k, _len2, _ref;
+//                    var child, first, _k, _len2, _ref;
                     if (!node.children.length) {
                         return;
                     }
-                    _ref = node.children;
-                    for (_k = 0, _len2 = _ref.length; _k < _len2; _k++) {
-                        child = _ref[_k];
-                        if (child.type === 'initial') {
-                            child.isInitial = true;
-                            return;
-                        }
-                        if (child.id === '@initial' && !child.children.length) {
-                            child.isInitial = true;
-                            return;
-                        }
-                    }
-                    first = node.children[0];
-                    if (first.autoId && first.children.length === 0) {
-                        return first.isInitial = true;
-                    }
+//                    _ref = node.children;
+//                    for (_k = 0, _len2 = _ref.length; _k < _len2; _k++) {
+//                        child = _ref[_k];
+//                        if (child.type === 'initial') {
+//                            child.isInitial = true;
+//                            return;
+//                        }
+//                        if (child.id === '@initial' && !child.children.length) {
+//                            child.isInitial = true;
+//                            return;
+//                        }
+//                    }
+//                    first = node.children[0];
+//                    if (first.autoId && first.children.length === 0) {
+//                        return first.isInitial = true;
+//                    }
                 };
             })(this));
             return this.s = newS;
@@ -978,6 +983,9 @@
                 d3.select(this).select('.border').attr('rx', corner_radius).attr('ry', corner_radius);
                 label = header.append('text').attr('class', "state-name").text(label_text).attr('y', 12);
                 labelTextWidth = $(label[0][0]).width();
+                if (labelTextWidth === 0){
+                    labelTextWidth = (label[0][0]).getBBox().width;
+                }
                 wLabel = d3.min([labelTextWidth + 2 * ROUND_CORNER, LABEL_SPACE]);
                 node.textWidth = wLabel;
                 onentry = header.append('g');
@@ -989,12 +997,8 @@
                 if (node.type === 'history') {
                     h = w;
                 }
-                //label.attr('x', wEntry + wLabel / 2 - w / 2);
-//                onEntryCell.attr('width', wEntry).attr('height', hEntry).attr('x', -wEntry/2);                
                 onentry.attr('transform', "translate(" + (wEntry / 2 - w / 2) + ",24)");
-//                onExitCell.attr('width', wExit).attr('height', hExit).attr('x', -wExit/2);                
                 onexit.attr('transform', "translate(" + (w / 2 - wExit / 2) + ",24)");
-
                 node.header = {
                     w: w,
                     h: h
@@ -1032,11 +1036,18 @@
                     y += 16;
                 }
                 y = $(transitionText[0][0]).height() + 4;
+                if (y === 4){
+                    y = (transitionText[0][0]).getBBox().height + 4;
+                }
                 tr.yPort = y - 2;
                 actionBlockG = offsetG.append('g').attr('transform', "translate(0," + y + ")");
                 _ref = actionBlockSvg(tr.actions || [], actionBlockG), w = _ref[0], h = _ref[1];
                 y += h;
-                tr.textWidth = d3.min([$(transitionText[0][0]).width() + 5, LABEL_SPACE]);
+                var testWidth = $(transitionText[0][0]).width() + 5;
+                if (testWidth === 5){
+                    testWidth = (transitionText[0][0]).getBBox().width + 5;
+                }
+                tr.textWidth = d3.min([testWidth, LABEL_SPACE]);
                 tr.w = d3.max([tr.w, tr.textWidth, w]);
                 tr.h = y + 4;
                 offsetG.attr('transform', "translate(0," + (-tr.h / 2) + ")");
@@ -1078,20 +1089,13 @@
                 return "translate(" + node.x + "," + node.y + ")";
             });
             this.container.selectAll('.cell').each(function (node) {
-//                console.log("onentry:" + (node.onentry !== undefined));
-//                console.log("onexit:" + (node.onexit !== undefined));
                 if ((node.onentry !== undefined) && (node.onexit !== undefined)) {
-                    //rounded_rect(x, y, w, h, r, tl, tr, bl, br)
                     animate(d3.select(this).select('.onentry')).attr('d', rounded_rect(-node.w / 2, 24 - (node.h / 2), node.w / 2, node.h - 24, 5, false, false, true, false));
                     animate(d3.select(this).select('.onexit')).attr('d', rounded_rect(0, 24 - (node.h / 2), node.w / 2, node.h - 24, 5, false, false, false, true));
-                    //animate(d3.select(this).select('.onentry')).attr('x', -node.w / 2).attr('y', 24 - (node.h / 2)).attr('width', node.w / 2).attr('height', node.h - 24);
-                    //animate(d3.select(this).select('.onexit')).attr('x', 0).attr('y', 24 - (node.h / 2)).attr('width', node.w / 2).attr('height', node.h - 24);
                 } else if ((node.onentry !== undefined) && (node.onexit === undefined)) {
                     animate(d3.select(this).select('.onentry')).attr('d', rounded_rect(-node.w / 2, 24 - (node.h / 2), node.w, node.h - 24, 5, false, false, true, true));
-                    //animate(d3.select(this).select('.onentry')).attr('x', -node.w / 2).attr('y', 24 - (node.h / 2)).attr('width', node.w).attr('height', node.h - 24);
                 } else if ((node.onentry === undefined) && (node.onexit !== undefined)) {
                     animate(d3.select(this).select('.onexit')).attr('d', rounded_rect(-node.w / 2, 24 - (node.h / 2), node.w, node.h - 24, 5, false, false, true, true));
-                    //animate(d3.select(this).select('.onexit')).attr('x', -node.w / 2).attr('y', 24 - (node.h / 2)).attr('width', node.w).attr('height', node.h - 24);
                 }
                 animate(d3.select(this).select('.border')).attr('x', -node.w / 2).attr('y', -node.h / 2).attr('width', node.w).attr('height', node.h);
                 animate(d3.select(this).select('.title')).attr('d', rounded_rect(-node.w / 2, -(node.h / 2), node.w, 24, 5, true, true, false, false));
