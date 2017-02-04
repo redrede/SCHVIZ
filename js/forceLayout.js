@@ -159,7 +159,7 @@
                     switch (node.tagName) {
                         case 'initial':
                             return {
-                                type: 'initial' + (currentState === node.getAttribute('id')) ? ' currentState' : '',
+                                type: 'initial' + ((currentState === node.getAttribute('id')) ? ' currentState' : ''),
                                 id: node.getAttribute('id') || null,
                                 children: parseStates(node, currentState),
                                 currentState: currentState === node.getAttribute('id')
@@ -980,13 +980,19 @@
                     label_text = node.label;
                     corner_radius = ROUND_CORNER;
                 }
-                d3.select(this).select('.border').attr('rx', corner_radius).attr('ry', corner_radius);
-                label = header.append('text').attr('class', "state-name").text(label_text).attr('y', 12);
-                labelTextWidth = $(label[0][0]).width();
-                if (labelTextWidth === 0){
-                    labelTextWidth = (label[0][0]).getBBox().width;
+                
+                if (!node.type.startsWith('initial')) {
+                    label = header.append('text').attr('class', "state-name").text(label_text).attr('y', 12);
+                    labelTextWidth = $(label[0][0]).width();
+                    if (labelTextWidth === 0) {
+                        labelTextWidth = (label[0][0]).getBBox().width;
+                    }
+                    wLabel = d3.min([labelTextWidth + 2 * ROUND_CORNER, LABEL_SPACE]);
+                }else{
+                    wLabel = 14;
+                    corner_radius = 14;
                 }
-                wLabel = d3.min([labelTextWidth + 2 * ROUND_CORNER, LABEL_SPACE]);
+                d3.select(this).select('.border').attr('rx', corner_radius).attr('ry', corner_radius);
                 node.textWidth = wLabel;
                 onentry = header.append('g');
                 onexit = header.append('g');
@@ -1036,7 +1042,7 @@
                     y += 16;
                 }
                 y = $(transitionText[0][0]).height() + 4;
-                if (y === 4){
+                if (y === 4) {
                     y = (transitionText[0][0]).getBBox().height + 4;
                 }
                 tr.yPort = y - 2;
@@ -1044,7 +1050,7 @@
                 _ref = actionBlockSvg(tr.actions || [], actionBlockG), w = _ref[0], h = _ref[1];
                 y += h;
                 var testWidth = $(transitionText[0][0]).width() + 5;
-                if (testWidth === 5){
+                if (testWidth === 5) {
                     testWidth = (transitionText[0][0]).getBBox().width + 5;
                 }
                 tr.textWidth = d3.min([testWidth, LABEL_SPACE]);
@@ -1089,17 +1095,42 @@
                 return "translate(" + node.x + "," + node.y + ")";
             });
             this.container.selectAll('.cell').each(function (node) {
+                var hasContent;
+                console.log(node);
                 if ((node.onentry !== undefined) && (node.onexit !== undefined)) {
                     animate(d3.select(this).select('.onentry')).attr('d', rounded_rect(-node.w / 2, 24 - (node.h / 2), node.w / 2, node.h - 24, 5, false, false, true, false));
                     animate(d3.select(this).select('.onexit')).attr('d', rounded_rect(0, 24 - (node.h / 2), node.w / 2, node.h - 24, 5, false, false, false, true));
+                    hasContent = true;
                 } else if ((node.onentry !== undefined) && (node.onexit === undefined)) {
                     animate(d3.select(this).select('.onentry')).attr('d', rounded_rect(-node.w / 2, 24 - (node.h / 2), node.w, node.h - 24, 5, false, false, true, true));
+                    hasContent = true;
                 } else if ((node.onentry === undefined) && (node.onexit !== undefined)) {
                     animate(d3.select(this).select('.onexit')).attr('d', rounded_rect(-node.w / 2, 24 - (node.h / 2), node.w, node.h - 24, 5, false, false, true, true));
+                    hasContent = true;
+                } else {
+                    d3.select(this).select('.onentry').remove();
+                    d3.select(this).select('.onexit').remove();
+                    if (node.children.length > 0) {
+                        hasContent = true;
+                    } else {
+                        hasContent = false;
+                    }
                 }
-                animate(d3.select(this).select('.border')).attr('x', -node.w / 2).attr('y', -node.h / 2).attr('width', node.w).attr('height', node.h);
-                animate(d3.select(this).select('.title')).attr('d', rounded_rect(-node.w / 2, -(node.h / 2), node.w, 24, 5, true, true, false, false));
-                animate(d3.select(this).select('.border-inset')).attr('x', -node.w / 2 + BORDER_INSET).attr('y', -node.h / 2 + BORDER_INSET).attr('width', node.w - 2 * BORDER_INSET).attr('height', node.h - 2 * BORDER_INSET);
+                if (hasContent) {
+                    animate(d3.select(this).select('.border')).attr('x', -node.w / 2).attr('y', -node.h / 2).attr('width', node.w).attr('height', node.h);
+                    animate(d3.select(this).select('.title')).attr('d', rounded_rect(-node.w / 2, -(node.h / 2), node.w, 24, 5, true, true, false, false));
+                    animate(d3.select(this).select('.border-inset')).attr('x', -node.w / 2 + BORDER_INSET).attr('y', -node.h / 2 + BORDER_INSET).attr('width', node.w - 2 * BORDER_INSET).attr('height', node.h - 2 * BORDER_INSET);
+                } else if(!node.type.startsWith('initial')){
+                    node.h = node.h - 10;
+                    animate(d3.select(this).select('.border')).attr('x', -node.w / 2).attr('y', -node.h / 2).attr('width', node.w).attr('height', node.h);
+                    animate(d3.select(this).select('.title')).attr('d', rounded_rect(-node.w / 2, -(node.h / 2), node.w, 24, 5, true, true, true, true));
+                    animate(d3.select(this).select('.border-inset')).attr('x', -node.w / 2 + BORDER_INSET).attr('y', -node.h / 2 + BORDER_INSET).attr('width', node.w - 2 * BORDER_INSET).attr('height', node.h - 2 * BORDER_INSET);
+                }else{
+                    node.h = node.h - 10;
+                    animate(d3.select(this).select('.border')).attr('x', -node.w / 2).attr('y', -node.h / 2).attr('width', node.w).attr('height', node.h);
+                    animate(d3.select(this).select('.title')).attr('d', rounded_rect(-node.w / 2, -(node.h / 2), node.w, 24, 14, true, true, true, true));
+                    animate(d3.select(this).select('.border-inset')).attr('x', -node.w / 2 + BORDER_INSET).attr('y', -node.h / 2 + BORDER_INSET).attr('width', node.w - 2 * BORDER_INSET).attr('height', node.h - 2 * BORDER_INSET);
+                }
                 return animate(d3.select(this).select('.cell-header')).attr('transform', function (node) {
                     return "translate(0," + (5 - node.h / 2) + ")";
                 });
